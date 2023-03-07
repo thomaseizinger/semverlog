@@ -1,66 +1,101 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use git2::Repository;
+use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
+use time::OffsetDateTime;
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    let repository = Repository::discover(".").context("failed to open git repository")?;
 
-    let changelogs = std::fs::read_dir(".changes")?
-        .map(|e| {
-            let content = std::fs::read_to_string(e?.path())?;
-            let parsed = parse_file_content(content)?;
-
-            Ok(parsed)
-        })
+    let mut changes = std::fs::read_dir(".changes")?
+        .map(|e| Ok(Change::from_path(&e?.path(), &repository)?))
         .collect::<Result<Vec<_>>>()?;
 
     match args.command {
         Command::ComputeBumpLevel { current_version } => {
-            let level = changelogs
+            let level = changes
                 .iter()
-                .map(|(frontmatter, _)| frontmatter.compute_bump_level(&current_version))
+                .map(|change| change.compute_bump_level(&current_version))
                 .max()
                 .context("Expected at least one changelog entry")?;
 
             println!("{level}")
         }
-        Command::CompileChangelog => {}
+        Command::CompileChangelog { version } => {
+            changes.sort_by(highest_priority_then_chronologically);
+
+            let (year, month, day) = OffsetDateTime::now_utc().date().to_calendar_date();
+
+            println!("# {version} - {year}-{}-{day}\n", u8::from(month));
+
+            let mut changes_by_kind =
+                changes
+                    .into_iter()
+                    .fold(HashMap::<_, Vec<_>>::new(), |mut map, change| {
+                        map.entry(change.kind).or_default().push(change);
+
+                        map
+                    });
+
+            for kind in [
+                Kind::Addition,
+                Kind::Change,
+                Kind::Removal,
+                Kind::Deprecation,
+                Kind::Security,
+            ] {
+                if let Entry::Occupied(changes) = changes_by_kind.entry(kind) {
+                    println!("## {}\n", kind.header());
+
+                    for change in changes.get() {
+                        println!("- {}", change.content)
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
 }
 
-#[derive(Parser)]
-struct Args {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(clap::Subcommand)]
-enum Command {
-    ComputeBumpLevel { current_version: semver::Version },
-    CompileChangelog,
-}
-
-fn parse_file_content(content: String) -> Result<(ChangeMetadata, String)> {
-    let mut parts = content.splitn(3, "---\n");
-
-    let frontmatter =
-        serde_yaml::from_str::<ChangeMetadata>(parts.nth(1).context("Missing frontmatter")?)
-            .context("Failed to parse frontmatter")?;
-    let body = parts.next().context("Missing body")?.trim().to_owned();
-
-    Ok((frontmatter, body))
-}
-
-#[derive(serde::Deserialize, Debug)]
-struct ChangeMetadata {
+struct Change {
     kind: Kind,
     breaking: Option<bool>,
     priority: Option<u8>,
+    created: OffsetDateTime,
+    content: String,
 }
 
-impl ChangeMetadata {
+impl Change {
+    fn from_path(path: &PathBuf, repository: &Repository) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let (frontmatter, content) = parse_file_content(content)?;
+
+        let blame = repository
+            .blame_file(&path, None)
+            .with_context(|| format!("failed to blame {}", path.display()))?;
+        let hunk = blame.iter().last().expect("at least one blame entry");
+        let time = repository
+            .find_object(hunk.final_commit_id(), None)
+            .context("failed to get object")?
+            .as_commit()
+            .expect("is a commit")
+            .time();
+
+        Ok(Change {
+            kind: frontmatter.kind,
+            breaking: frontmatter.breaking,
+            priority: frontmatter.priority,
+            created: OffsetDateTime::from_unix_timestamp(time.seconds())?,
+            content,
+        })
+    }
+
     fn compute_bump_level(&self, version: &semver::Version) -> BumpLevel {
         match (version, self.kind, self.breaking) {
             (_, Kind::Security, _) => BumpLevel::Patch, // Is this correct?
@@ -124,7 +159,41 @@ impl ChangeMetadata {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Copy, Clone)]
+fn highest_priority_then_chronologically(a: &Change, b: &Change) -> Ordering {
+    b.priority.cmp(&a.priority).then(a.created.cmp(&b.created))
+}
+
+#[derive(Parser)]
+struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    ComputeBumpLevel { current_version: semver::Version },
+    CompileChangelog { version: semver::Version },
+}
+
+fn parse_file_content(content: String) -> Result<(FrontMatter, String)> {
+    let mut parts = content.splitn(3, "---\n");
+
+    let frontmatter =
+        serde_yaml::from_str::<FrontMatter>(parts.nth(1).context("Missing frontmatter")?)
+            .context("Failed to parse frontmatter")?;
+    let body = parts.next().context("Missing body")?.trim().to_owned();
+
+    Ok((frontmatter, body))
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct FrontMatter {
+    kind: Kind,
+    breaking: Option<bool>,
+    priority: Option<u8>,
+}
+
+#[derive(serde::Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 enum Kind {
     Addition,
@@ -132,6 +201,18 @@ enum Kind {
     Deprecation,
     Removal,
     Security,
+}
+
+impl Kind {
+    fn header(&self) -> &str {
+        match self {
+            Kind::Addition => "Added",
+            Kind::Change => "Changed",
+            Kind::Deprecation => "Deprecated",
+            Kind::Removal => "Removed",
+            Kind::Security => "Security",
+        }
+    }
 }
 
 #[derive(serde::Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
@@ -154,12 +235,58 @@ impl fmt::Display for BumpLevel {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
     use super::*;
 
     #[test]
     fn major_greater_minor_greater_patch() {
         assert!(BumpLevel::Major > BumpLevel::Minor);
         assert!(BumpLevel::Minor > BumpLevel::Patch);
+    }
+
+    #[test]
+    fn sort_order() {
+        let mut changes = [
+            Change {
+                kind: Kind::Addition,
+                breaking: None,
+                priority: Some(1),
+                created: OffsetDateTime::now_utc() - Duration::from_secs(10),
+                content: "A".to_string(),
+            },
+            Change {
+                kind: Kind::Addition,
+                breaking: None,
+                priority: None,
+                created: OffsetDateTime::now_utc(),
+                content: "B".to_string(),
+            },
+            Change {
+                kind: Kind::Addition,
+                breaking: None,
+                priority: None,
+                created: OffsetDateTime::now_utc() - Duration::from_secs(30),
+                content: "C".to_string(),
+            },
+            Change {
+                kind: Kind::Addition,
+                breaking: None,
+                priority: Some(5),
+                created: OffsetDateTime::now_utc(),
+                content: "D".to_string(),
+            },
+            Change {
+                kind: Kind::Addition,
+                breaking: None,
+                priority: Some(5),
+                created: OffsetDateTime::now_utc() - Duration::from_secs(10),
+                content: "E".to_string(),
+            },
+        ];
+
+        changes.sort_by(highest_priority_then_chronologically);
+
+        assert_eq!(changes.map(|c| c.content), ["E", "D", "A", "C", "B"])
     }
 
     #[test]
@@ -194,10 +321,13 @@ mod tests {
         );
     }
 
-    fn entry(kind: Kind, breaking: impl Into<Option<bool>>) -> ChangeMetadata {
-        ChangeMetadata {
+    fn entry(kind: Kind, breaking: impl Into<Option<bool>>) -> Change {
+        Change {
             kind,
             breaking: breaking.into(),
+            priority: None,
+            created: OffsetDateTime::now_utc(),
+            content: "".to_string(),
         }
     }
 }

@@ -12,3 +12,4 @@ git2 = "0.16.1"
 semver = "1.0.16"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_yaml = "0.9.19"
+time = { version = "0.3.20", features = ["formatting", "macros"] }
