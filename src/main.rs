@@ -31,7 +31,7 @@ fn main() -> Result<()> {
 
             let (year, month, day) = OffsetDateTime::now_utc().date().to_calendar_date();
 
-            println!("# {version} - {year}-{}-{day}\n", u8::from(month));
+            println!("## {version} - {year}-{}-{day}\n", u8::from(month));
 
             let mut changes_by_kind =
                 changes
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
                 Kind::Security,
             ] {
                 if let Entry::Occupied(changes) = changes_by_kind.entry(kind) {
-                    println!("## {}\n", kind.header());
+                    println!("### {}\n", kind.header());
 
                     for change in changes.get() {
                         println!("- {}", change.content)
