@@ -24,9 +24,7 @@ fn main() -> Result<()> {
 
             println!("{level}")
         }
-        Command::CompileChangelog => {
-
-        }
+        Command::CompileChangelog => {}
     }
 
     Ok(())
@@ -44,11 +42,11 @@ enum Command {
     CompileChangelog,
 }
 
-fn parse_file_content(content: String) -> Result<(Frontmatter, String)> {
+fn parse_file_content(content: String) -> Result<(ChangeMetadata, String)> {
     let mut parts = content.splitn(3, "---\n");
 
     let frontmatter =
-        serde_yaml::from_str::<Frontmatter>(parts.nth(1).context("Missing frontmatter")?)
+        serde_yaml::from_str::<ChangeMetadata>(parts.nth(1).context("Missing frontmatter")?)
             .context("Failed to parse frontmatter")?;
     let body = parts.next().context("Missing body")?.trim().to_owned();
 
@@ -56,12 +54,13 @@ fn parse_file_content(content: String) -> Result<(Frontmatter, String)> {
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct Frontmatter {
+struct ChangeMetadata {
     kind: Kind,
     breaking: Option<bool>,
+    priority: Option<u8>,
 }
 
-impl Frontmatter {
+impl ChangeMetadata {
     fn compute_bump_level(&self, version: &semver::Version) -> BumpLevel {
         match (version, self.kind, self.breaking) {
             (_, Kind::Security, _) => BumpLevel::Patch, // Is this correct?
@@ -195,8 +194,8 @@ mod tests {
         );
     }
 
-    fn entry(kind: Kind, breaking: impl Into<Option<bool>>) -> Frontmatter {
-        Frontmatter {
+    fn entry(kind: Kind, breaking: impl Into<Option<bool>>) -> ChangeMetadata {
+        ChangeMetadata {
             kind,
             breaking: breaking.into(),
         }
