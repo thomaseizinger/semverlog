@@ -5,8 +5,9 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Write;
 use std::path::PathBuf;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -28,42 +29,60 @@ fn main() -> Result<()> {
 
             println!("{level}")
         }
-        Command::CompileChangelog { new_version: version } => {
+        Command::CompileChangelog { new_version } => {
             changes.sort_by(highest_priority_then_chronologically);
 
-            let (year, month, day) = OffsetDateTime::now_utc().date().to_calendar_date();
+            let changelog_entry =
+                compile_changelog(new_version, changes, OffsetDateTime::now_utc().date());
 
-            println!("## {version} - {year}-{}-{day}\n", u8::from(month));
-
-            let mut changes_by_kind =
-                changes
-                    .into_iter()
-                    .fold(HashMap::<_, Vec<_>>::new(), |mut map, change| {
-                        map.entry(change.kind).or_default().push(change);
-
-                        map
-                    });
-
-            for kind in [
-                Kind::Added,
-                Kind::Fixed,
-                Kind::Changed,
-                Kind::Removed,
-                Kind::Deprecated,
-                Kind::Security,
-            ] {
-                if let Entry::Occupied(changes) = changes_by_kind.entry(kind) {
-                    println!("### {}\n", kind.header());
-
-                    for change in changes.get() {
-                        println!("- {}", change.content)
-                    }
-                }
-            }
+            println!("{changelog_entry}")
         }
     }
 
     Ok(())
+}
+
+fn compile_changelog(version: semver::Version, changes: Vec<Change>, release_date: Date) -> String {
+    let mut changelog = String::new();
+
+    let (year, month, day) = release_date.to_calendar_date();
+
+    writeln!(
+        &mut changelog,
+        "## {version} - {year}-{}-{day}\n",
+        u8::from(month)
+    )
+    .expect("write to string always succeeds");
+
+    let mut changes_by_kind =
+        changes
+            .into_iter()
+            .fold(HashMap::<_, Vec<_>>::new(), |mut map, change| {
+                map.entry(change.kind).or_default().push(change);
+
+                map
+            });
+
+    for kind in [
+        Kind::Added,
+        Kind::Fixed,
+        Kind::Changed,
+        Kind::Removed,
+        Kind::Deprecated,
+        Kind::Security,
+    ] {
+        if let Entry::Occupied(changes) = changes_by_kind.entry(kind) {
+            writeln!(&mut changelog, "### {}\n", kind.header())
+                .expect("write to string always succeeds");
+
+            for change in changes.get() {
+                writeln!(&mut changelog, "- {}", change.content.replace("\n", "\n  "))
+                    .expect("write to string always succeeds");
+            }
+        }
+    }
+
+    changelog
 }
 
 struct Change {
@@ -242,6 +261,7 @@ impl fmt::Display for BumpLevel {
 mod tests {
     use super::*;
     use std::time::Duration;
+    use time::Month;
 
     #[test]
     fn major_greater_minor_greater_patch() {
@@ -292,6 +312,34 @@ mod tests {
         changes.sort_by(highest_priority_then_chronologically);
 
         assert_eq!(changes.map(|c| c.content), ["E", "D", "A", "C", "B"])
+    }
+
+    #[test]
+    fn compile_changelog_indents_correctly() {
+        let changes = vec![Change {
+            kind: Kind::Added,
+            breaking: None,
+            priority: None,
+            created: OffsetDateTime::now_utc(),
+            content: "I am a change\nWith two lines".to_string(),
+        }];
+
+        let changelog = compile_changelog(
+            "0.1.0".parse().unwrap(),
+            changes,
+            Date::from_calendar_date(2023, Month::January, 01).unwrap(),
+        );
+
+        assert_eq!(
+            changelog,
+            r#"## 0.1.0 - 2023-1-1
+
+### Added
+
+- I am a change
+  With two lines
+"#
+        )
     }
 
     #[test]
