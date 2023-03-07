@@ -28,7 +28,7 @@ fn main() -> Result<()> {
 
             println!("{level}")
         }
-        Command::CompileChangelog { version } => {
+        Command::CompileChangelog { new_version: version } => {
             changes.sort_by(highest_priority_then_chronologically);
 
             let (year, month, day) = OffsetDateTime::now_utc().date().to_calendar_date();
@@ -175,7 +175,7 @@ struct Args {
 #[derive(clap::Subcommand)]
 enum Command {
     ComputeBumpLevel { current_version: semver::Version },
-    CompileChangelog { version: semver::Version },
+    CompileChangelog { new_version: semver::Version },
 }
 
 fn parse_file_content(content: String) -> Result<(FrontMatter, String)> {
