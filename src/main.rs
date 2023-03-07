@@ -44,6 +44,7 @@ fn main() -> Result<()> {
 
             for kind in [
                 Kind::Added,
+                Kind::Fixed,
                 Kind::Changed,
                 Kind::Removed,
                 Kind::Deprecated,
@@ -98,7 +99,7 @@ impl Change {
 
     fn compute_bump_level(&self, version: &semver::Version) -> BumpLevel {
         match (version, self.kind, self.breaking) {
-            (_, Kind::Security, _) => BumpLevel::Patch, // Is this correct?
+            (_, Kind::Security | Kind::Fixed, _) => BumpLevel::Patch, // Is this correct?
 
             (semver::Version { major: 1.., .. }, Kind::Changed | Kind::Removed, Some(false)) => {
                 BumpLevel::Minor
@@ -197,6 +198,7 @@ struct FrontMatter {
 #[serde(rename_all = "lowercase")]
 enum Kind {
     Added,
+    Fixed,
     Changed,
     Deprecated,
     Removed,
@@ -207,6 +209,7 @@ impl Kind {
     fn header(&self) -> &str {
         match self {
             Kind::Added => "Added",
+            Kind::Fixed => "Fixed",
             Kind::Changed => "Changed",
             Kind::Deprecated => "Deprecated",
             Kind::Removed => "Removed",
@@ -318,6 +321,14 @@ mod tests {
         assert_eq!(
             entry(Kind::Added, true).compute_bump_level(&"0.1.0".parse().unwrap()),
             BumpLevel::Minor
+        );
+        assert_eq!(
+            entry(Kind::Fixed, None).compute_bump_level(&"0.1.0".parse().unwrap()),
+            BumpLevel::Patch
+        );
+        assert_eq!(
+            entry(Kind::Fixed, None).compute_bump_level(&"1.0.0".parse().unwrap()),
+            BumpLevel::Patch
         );
     }
 
