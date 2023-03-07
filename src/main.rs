@@ -12,9 +12,11 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let repository = Repository::discover(".").context("failed to open git repository")?;
 
-    let mut changes = std::fs::read_dir(".changes")?
+    let mut changes = std::fs::read_dir(".changes")
+        .context("failed to open directory `.changes`")?
         .map(|e| Ok(Change::from_path(&e?.path(), &repository)?))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()
+        .context("failed to read change files")?;
 
     match args.command {
         Command::ComputeBumpLevel { current_version } => {
@@ -22,7 +24,7 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|change| change.compute_bump_level(&current_version))
                 .max()
-                .context("Expected at least one changelog entry")?;
+                .context("expected at least one changelog entry")?;
 
             println!("{level}")
         }
@@ -238,8 +240,8 @@ impl fmt::Display for BumpLevel {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn major_greater_minor_greater_patch() {
