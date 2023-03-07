@@ -45,7 +45,8 @@ priority: 0-10
 By default, the `changed` and `removed` kind are considered a breaking change, unless overridden with `breaking: false`.
 
 `<CHANGE_TEXT>` will be output verbatim upon `semverlog compile-changelog`.
-It is recommended to stick to a single paragraph and not add any extra headings to avoid formatting problems.
+It is recommended to stick to paragraphs and not add any extra headings to avoid formatting problems.
+If you want to add headings, take into account that all changes are within sections of level-3 (`###`) headings, i.e. `### Added` etc so you want to start your headings at level 4 within the changelog entry.
 
 ## Recommended workflow
 
