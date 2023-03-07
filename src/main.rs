@@ -106,7 +106,7 @@ impl Change {
             .find_object(hunk.final_commit_id(), None)
             .context("failed to get object")?
             .as_commit()
-            .expect("is a commit")
+            .expect("oid points to a commit")
             .time();
 
         Ok(Change {
