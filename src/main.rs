@@ -43,10 +43,10 @@ fn main() -> Result<()> {
                     });
 
             for kind in [
-                Kind::Addition,
-                Kind::Change,
-                Kind::Removal,
-                Kind::Deprecation,
+                Kind::Added,
+                Kind::Changed,
+                Kind::Removed,
+                Kind::Deprecated,
                 Kind::Security,
             ] {
                 if let Entry::Occupied(changes) = changes_by_kind.entry(kind) {
@@ -100,10 +100,10 @@ impl Change {
         match (version, self.kind, self.breaking) {
             (_, Kind::Security, _) => BumpLevel::Patch, // Is this correct?
 
-            (semver::Version { major: 1.., .. }, Kind::Change | Kind::Removal, Some(false)) => {
+            (semver::Version { major: 1.., .. }, Kind::Changed | Kind::Removed, Some(false)) => {
                 BumpLevel::Minor
             }
-            (semver::Version { major: 1.., .. }, Kind::Change | Kind::Removal, _) => {
+            (semver::Version { major: 1.., .. }, Kind::Changed | Kind::Removed, _) => {
                 BumpLevel::Major
             }
 
@@ -116,7 +116,7 @@ impl Change {
                     minor: 1..,
                     ..
                 },
-                Kind::Change | Kind::Removal,
+                Kind::Changed | Kind::Removed,
                 Some(false),
             ) => BumpLevel::Patch,
             (
@@ -125,7 +125,7 @@ impl Change {
                     minor: 1..,
                     ..
                 },
-                Kind::Change | Kind::Removal,
+                Kind::Changed | Kind::Removed,
                 _,
             ) => BumpLevel::Minor,
 
@@ -196,20 +196,20 @@ struct FrontMatter {
 #[derive(serde::Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 enum Kind {
-    Addition,
-    Change,
-    Deprecation,
-    Removal,
+    Added,
+    Changed,
+    Deprecated,
+    Removed,
     Security,
 }
 
 impl Kind {
     fn header(&self) -> &str {
         match self {
-            Kind::Addition => "Added",
-            Kind::Change => "Changed",
-            Kind::Deprecation => "Deprecated",
-            Kind::Removal => "Removed",
+            Kind::Added => "Added",
+            Kind::Changed => "Changed",
+            Kind::Deprecated => "Deprecated",
+            Kind::Removed => "Removed",
             Kind::Security => "Security",
         }
     }
@@ -248,35 +248,35 @@ mod tests {
     fn sort_order() {
         let mut changes = [
             Change {
-                kind: Kind::Addition,
+                kind: Kind::Added,
                 breaking: None,
                 priority: Some(1),
                 created: OffsetDateTime::now_utc() - Duration::from_secs(10),
                 content: "A".to_string(),
             },
             Change {
-                kind: Kind::Addition,
+                kind: Kind::Added,
                 breaking: None,
                 priority: None,
                 created: OffsetDateTime::now_utc(),
                 content: "B".to_string(),
             },
             Change {
-                kind: Kind::Addition,
+                kind: Kind::Added,
                 breaking: None,
                 priority: None,
                 created: OffsetDateTime::now_utc() - Duration::from_secs(30),
                 content: "C".to_string(),
             },
             Change {
-                kind: Kind::Addition,
+                kind: Kind::Added,
                 breaking: None,
                 priority: Some(5),
                 created: OffsetDateTime::now_utc(),
                 content: "D".to_string(),
             },
             Change {
-                kind: Kind::Addition,
+                kind: Kind::Added,
                 breaking: None,
                 priority: Some(5),
                 created: OffsetDateTime::now_utc() - Duration::from_secs(10),
@@ -292,23 +292,23 @@ mod tests {
     #[test]
     fn computes_bump_level_correctly() {
         assert_eq!(
-            entry(Kind::Addition, None).compute_bump_level(&"1.0.0".parse().unwrap()),
+            entry(Kind::Added, None).compute_bump_level(&"1.0.0".parse().unwrap()),
             BumpLevel::Minor
         );
         assert_eq!(
-            entry(Kind::Change, false).compute_bump_level(&"1.0.0".parse().unwrap()),
+            entry(Kind::Changed, false).compute_bump_level(&"1.0.0".parse().unwrap()),
             BumpLevel::Minor
         );
         assert_eq!(
-            entry(Kind::Change, None).compute_bump_level(&"0.1.0".parse().unwrap()),
+            entry(Kind::Changed, None).compute_bump_level(&"0.1.0".parse().unwrap()),
             BumpLevel::Minor
         );
         assert_eq!(
-            entry(Kind::Deprecation, None).compute_bump_level(&"1.0.0".parse().unwrap()),
+            entry(Kind::Deprecated, None).compute_bump_level(&"1.0.0".parse().unwrap()),
             BumpLevel::Minor
         );
         assert_eq!(
-            entry(Kind::Removal, None).compute_bump_level(&"1.0.0".parse().unwrap()),
+            entry(Kind::Removed, None).compute_bump_level(&"1.0.0".parse().unwrap()),
             BumpLevel::Major
         );
         assert_eq!(
@@ -316,7 +316,7 @@ mod tests {
             BumpLevel::Patch
         );
         assert_eq!(
-            entry(Kind::Addition, true).compute_bump_level(&"0.1.0".parse().unwrap()),
+            entry(Kind::Added, true).compute_bump_level(&"0.1.0".parse().unwrap()),
             BumpLevel::Minor
         );
     }
