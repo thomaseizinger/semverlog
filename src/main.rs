@@ -5,7 +5,7 @@ use std::fmt;
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let changelogs = std::fs::read_dir(".changelogs")?
+    let changelogs = std::fs::read_dir(".changes")?
         .map(|e| {
             let content = std::fs::read_to_string(e?.path())?;
             let parsed = parse_file_content(content)?;
@@ -24,7 +24,9 @@ fn main() -> Result<()> {
 
             println!("{level}")
         }
-        Command::CompileChangelog => {}
+        Command::CompileChangelog => {
+
+        }
     }
 
     Ok(())
