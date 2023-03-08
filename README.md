@@ -16,6 +16,8 @@ However, as a library grows and perhaps gets split into multiple smaller ones, i
   This makes releases stress-free.
 - **Flexible**: Despite being free of configuration files, `semverlog` aims to flexible where possible.
   For example, we don't integrate with package managers, instead `semverlog` requires you to pass in the current version of the package as an argument.
+- **Contributor-friendly**: You can use `semverlog` as a maintainer without forcing your contributors into it.
+The change file format is so simple and the name doesn't matter, meaning contributors can create entries without installing the tool.
 
 ## Usage
 
