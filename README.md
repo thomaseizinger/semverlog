@@ -55,3 +55,8 @@ If you want to add headings, take into account that all changes are within secti
 - Squash-merge your PRs: This will ensure the change file is committed together with the actual change.
 - Delete change files within `.changes` after each release.
   `semverlog` will always consider the entire `.changes` directory.
+
+## Related tools
+
+- [changie](https://github.com/miniscruff/changie): Much more features but also more configuration
+- [cargo-changelog](https://github.com/matthiasbeyer/cargo-changelog): No integration with semver (yet)
